@@ -40,11 +40,14 @@ symbol = anyOf ['a'..'z']
 
 word = many1 symbol
 
+space = char ' '
+spaces = many1 space
+
 var = word >>= return . NVar
 
 lambda = lam >> var >>= \(NVar x) -> dot >> app >>= \y -> return (NLambda x y)
 
-app = fmap (foldl1 NApp) $ many1SepBy (lambda <|> var <|> between lpar app rpar) at
+app = fmap (foldl1 NApp) $ many1SepBy (lambda <|> var <|> between lpar app rpar) spaces
 
 --------------
 -- Simplifier
