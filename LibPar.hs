@@ -26,8 +26,9 @@ throw desc = State $ \s -> (s, Left (Exception desc))
 
 try :: Parser a -> Parser (Maybe a)
 try p = State $ \s -> case run p s of
-    (_, Left _)   -> (s, Right Nothing)
-    (s', Right a) -> (s', Right (Just a))
+    (_, Left (Exception e)) -> (s, Left (Exception e))
+    (_, Left (Error _))     -> (s, Right Nothing)
+    (s', Right a)           -> (s', Right (Just a))
 
 (<|>) :: Parser a -> Parser a -> Parser a
 p <|> q  = State $ \s -> case run p s of
