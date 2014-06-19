@@ -32,7 +32,6 @@ data NExpr = NConst CN
 
 lam  = char '\\'
 dot  = char '.'
-at   = char '@'
 lpar = char '('
 rpar = char ')'
 
