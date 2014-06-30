@@ -8,3 +8,4 @@ Currently here are available:
  * Emacs org mode-like parser
  * Simple XML parser
  * Lambda expressions parser and simplifier
+ * [EBNF](http://en.wikipedia.org/wiki/Extended_Backus-Naur_Form) parser
