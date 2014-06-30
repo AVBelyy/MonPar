@@ -1,4 +1,10 @@
-module LibPar where
+module LibPar (
+    Parser, Error,
+    oops, throw, try, (<|>), anychar, like, char, anyOf, noneOf,
+    string, many1, many, many1SepBy, manySepBy, between, parse,
+    (<$>), (<*>), (<*), (*>)) where
+
+import Control.Applicative (Applicative(..), (<$>))
 
 data Error = Error     String
            | Exception String
@@ -7,16 +13,23 @@ newtype State c a = State { run :: [c] -> ([c], Either Error a) }
 
 type Parser a = State Char a
 
-instance Monad (State c) where
-    return a = State $ \s -> (s, Right a)
-    (>>=) x f = State $ \s -> case run x s of
-        (s', Left a)   -> (s', Left a)
-        (s', Right a)  -> run (f a) s'
-
 instance Functor (State c) where
     fmap f m = do
         x <- m
         return (f x)
+
+instance Applicative (State c) where
+    pure  = return
+    (<*>) f x = do
+        f' <- f
+        x' <- x
+        return (f' x')
+
+instance Monad (State c) where
+    return a = State $ \s -> (s, Right a)
+    (>>=) x f = State $ \s -> case run x s of
+        (s', Left a) -> (s', Left a)
+        (s', Right a) -> run (f a) s'
 
 oops :: String -> Parser a
 oops desc = State $ \s -> (s, Left (Error desc))
@@ -59,31 +72,22 @@ noneOf s = like (not . (`elem` s)) $ "something not in " ++ show s
 
 string :: String -> Parser String
 string [] = return []
-string (x:xs) = do
-    char x
-    string xs
-    return (x:xs)
+string (x:xs) = (:) <$> char x <*> string xs
 
 many1 :: Parser a -> Parser [a]
-many1 p = do
-    x <- p
-    xs <- many p
-    return (x:xs)
+many1 p = (:) <$> p <*> many p
 
 many :: Parser a -> Parser [a]
 many p = many1 p <|> return []
 
 many1SepBy :: Parser a -> Parser b -> Parser [a]
-many1SepBy p s = do
-    x <- p
-    xs <- many (s >> p)
-    return (x:xs)
+many1SepBy p s = (:) <$> p <*> many (s >> p)
 
 manySepBy :: Parser a -> Parser b -> Parser [a]
 manySepBy p s = many1SepBy p s <|> return []
 
 between :: Parser b -> Parser a -> Parser b' -> Parser a
-between p q r = p >> q >>= \x -> r >> return x
+between p q r = p *> q <* r
 
 parse :: Parser a -> String -> a
 parse p s = case run p s of
