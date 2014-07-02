@@ -9,7 +9,7 @@ import Control.Applicative (Applicative(..), (<$>))
 data Error = Error     String
            | Exception String
 
-newtype State c a = State { run :: [c] -> ([c], Either Error a) }
+newtype State c a = State { run :: [c] -> Either Error ([c], a) }
 
 type Parser a = State Char a
 
@@ -26,33 +26,33 @@ instance Applicative (State c) where
         return (f' x')
 
 instance Monad (State c) where
-    return a = State $ \s -> (s, Right a)
+    return a = State $ \s -> Right (s, a)
     (>>=) x f = State $ \s -> case run x s of
-        (s', Left a) -> (s', Left a)
-        (s', Right a) -> run (f a) s'
+        Left a -> Left a
+        Right (s', a) -> run (f a) s'
 
 oops :: String -> Parser a
-oops desc = State $ \s -> (s, Left (Error desc))
+oops desc = State $ \_ -> Left (Error desc)
 
 throw :: String -> Parser a
-throw desc = State $ \s -> (s, Left (Exception desc))
+throw desc = State $ \_ -> Left (Exception desc)
 
 try :: Parser a -> Parser (Maybe a)
 try p = State $ \s -> case run p s of
-    (_, Left (Exception e)) -> (s, Left (Exception e))
-    (_, Left (Error _))     -> (s, Right Nothing)
-    (s', Right a)           -> (s', Right (Just a))
+    Left (Exception e) -> Left (Exception e)
+    Left (Error _)     -> Right (s, Nothing)
+    Right (s', a)      -> Right (s', Just a)
 
 (<|>) :: Parser a -> Parser a -> Parser a
-p <|> q  = State $ \s -> case run p s of
-    (_, Left (Error _))     -> run q s
-    (_, Left (Exception e)) -> (s, Left (Exception e))
-    (s', Right a)           -> (s', Right a)
+p <|> q  = State $ \s  -> case run p s of
+    Left (Error _)     -> run q s
+    Left (Exception e) -> Left (Exception e)
+    Right (s', a)      -> Right (s', a)
 
 anychar :: Parser Char
 anychar = State $ \s -> case s of
-    []     -> ([], Left (Error "eof"))
-    (x:xs) -> (xs, Right x)
+    []     -> Left (Error "eof")
+    (x:xs) -> Right (xs, x)
 
 like :: (Char -> Bool) -> String -> Parser Char
 like p desc = do
@@ -91,7 +91,7 @@ between p q r = p *> q <* r
 
 parse :: Parser a -> String -> a
 parse p s = case run p s of
-    ("", Right a) -> a
-    (as, Right _) -> error $ "unexpected " ++ as
-    (_, Left (Error err))     -> error err
-    (_, Left (Exception err)) -> error err
+    Right ("", a) -> a
+    Right (as, _) -> error $ "unexpected " ++ as
+    Left (Error err)     -> error err
+    Left (Exception err) -> error err
