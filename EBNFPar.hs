@@ -133,7 +133,7 @@ main = do
     text <- readFile "text.txt"
     let grammar = parse ebnf input
     let ctx = genFromEBNF grammar
-    let parser = getRule ctx "ebnf"
+    let parser = getRule ctx "main"
     putStrLn "Parsed grammar from grammar.txt:"
     print $ grammar
     putStrLn "\nResult of parsing text.txt with this grammar:"
