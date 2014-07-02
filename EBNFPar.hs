@@ -1,13 +1,18 @@
 module Main where
 
+import Control.Applicative (Applicative(..))
+
 import LibPar
 
 --------------
 --  Datatypes
 --------------
 
+type EBNF = [Operator]
+
 data Operator = Operator String Expression
                 deriving Show
+
 data Expression = ID String
                 | Chain String
                 | Group Expression
@@ -32,9 +37,12 @@ rsbracket = char ']'
 dot = char '.'
 
 assignment = string "::="
-letter = anyOf ['a'..'z']
+letter = anyOf (['a'..'z'] ++ ['0'..'9'] ++ "_")
 space = anyOf " \t\n"
-symbol = noneOf "'"
+symbol = escape <|> noneOf "'"
+
+escapeChar = anyOf ('"' : "nt'\\")
+escape = (\c -> head (read ("\"\\" ++ [c] ++ "\"") :: String)) <$> (char '\\' >> escapeChar)
 
 -----------
 -- Grammar
@@ -66,10 +74,67 @@ symbols = many symbol
 
 spaces = many space
 
+-------------
+-- Generator
+-------------
+
+data GenContext a = Ctx (String -> GenContext a) | Leaf a
+
+type ContextStorage a = String -> (GenContext a -> GenContext a)
+
+instance Functor GenContext where
+    fmap f (Leaf p) = Leaf (f p) -- homomorphism law
+    fmap f (Ctx  p) = Ctx  (\s -> f <$> p s) -- typechecks
+
+instance Applicative GenContext where
+    pure = Leaf
+    (<*>) (Leaf f) (Leaf p) = Leaf (f p) -- homomorphism law
+    (<*>) (Leaf f) (Ctx  p) = Ctx  (\s -> Leaf f <*> p s) -- fmap law
+    (<*>) (Ctx  f) (Leaf p) = Ctx  (\s -> Leaf ($ p) <*> f s) -- interchange law
+    (<*>) (Ctx  f) (Ctx  p) = Ctx  (\s -> f s <*> p s) -- my guess
+
+genFromExpr :: Expression -> GenContext (Parser ()) -> GenContext (Parser ())
+genFromExpr (ID    x) (Ctx p)  = Leaf $ get (p x)
+genFromExpr (Chain x) _        = Leaf $ string x >> return ()
+genFromExpr (Group x) p        = genFromExpr x p
+genFromExpr (Many  x) (Ctx p)  = Ctx  $ \_ -> (\y -> many y >> return ()) <$> genFromExpr x (Ctx p)
+genFromExpr (Try   x) (Ctx p)  = Ctx  $ \_ -> (\y -> y <|> return ()) <$> genFromExpr x (Ctx p)
+genFromExpr (Or   xs) (Ctx p)  = Ctx  $ \_ -> foldl1 (\x y -> (<|>) <$> x <*> y) (map (\x -> genFromExpr x (Ctx p)) xs)
+genFromExpr (Term xs) (Ctx p)  = Ctx  $ \_ -> foldl1 (\x y -> (>>) <$> x <*> y) (map (\x -> genFromExpr x (Ctx p)) xs)
+genFromExpr _         (Leaf _) = error "no ctx"
+
+genFromOperator :: Operator -> ContextStorage (Parser ()) -> ContextStorage (Parser ())
+genFromOperator (Operator x y) ctx = \s -> if s == x then genFromExpr y else ctx s
+
+emptyCtx :: ContextStorage (Parser ())
+emptyCtx s = error $ "rule '" ++ s ++ "' was not declared"
+
+genFromEBNF :: EBNF -> ContextStorage (Parser ())
+genFromEBNF []     = emptyCtx
+genFromEBNF (x:xs) = genFromOperator x (genFromEBNF xs)
+
+-- some magic
+getFrom :: ContextStorage (Parser ()) -> String -> GenContext (Parser ())
+getFrom ctx s = ctx s (Ctx (getFrom ctx))
+
+get :: GenContext (Parser ()) -> Parser ()
+get (Leaf a) = a
+get (Ctx  a) = get (a "")
+
+getRule :: ContextStorage (Parser ()) -> String -> Parser ()
+getRule ctx s = get (getFrom ctx s)
+
 --------
 -- Main
 --------
 
 main = do
     input <- readFile "grammar.txt"
-    print $ parse ebnf input
+    text <- readFile "text.txt"
+    let grammar = parse ebnf input
+    let ctx = genFromEBNF grammar
+    let parser = getRule ctx "ebnf"
+    putStrLn "Parsed grammar from grammar.txt:"
+    print $ grammar
+    putStrLn "\nResult of parsing text.txt with this grammar:"
+    print $ parse parser text
