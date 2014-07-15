@@ -1,10 +1,11 @@
 module LibPar (
     Parser, Error,
     oops, throw, try, (<|>), anychar, like, char, anyOf, noneOf,
-    string, many1, many, many1SepBy, manySepBy, between, parse,
+    string, keyword, many1, many, many1SepBy, manySepBy, between, parse,
     (<$>), (<*>), (<*), (*>)) where
 
 import Control.Applicative (Applicative(..), (<$>))
+import Data.Char
 
 data Error = Error     String
            | Exception String
@@ -73,6 +74,10 @@ noneOf s = like (not . (`elem` s)) $ "something not in " ++ show s
 string :: String -> Parser String
 string [] = return []
 string (x:xs) = (:) <$> char x <*> string xs
+
+keyword :: String -> Parser String
+keyword [] = return []
+keyword (x:xs) = (:) <$> char (toUpper x) <|> char (toLower x) <*> keyword xs
 
 many1 :: Parser a -> Parser [a]
 many1 p = (:) <$> p <*> many p
